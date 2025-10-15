@@ -20,7 +20,28 @@ class MyApp extends StatelessWidget {
 }
 
 /// 支持的组件类型
-enum ShapeType { tableRound, tableRect, chair, wall, cashier, pillar, kitchen }
+enum ShapeType {
+  // 结构类
+  wall,
+  door,
+  window,
+  pillar,
+  kitchen,
+  restroom,
+  // 桌椅类
+  tableRect,
+  tableRound,
+  chair,
+  booth,
+  // 业务类
+  cashier,
+  barCounter,
+  queueArea,
+  // 辅助类
+  label,
+  arrow,
+  decoration,
+}
 
 /// 画布上一个物体
 class ShapeModel {
@@ -30,6 +51,7 @@ class ShapeModel {
   Size size; // 世界尺寸
   double rotation; // 弧度
   bool selected;
+  String name;
 
   ShapeModel({
     required this.id,
@@ -38,6 +60,7 @@ class ShapeModel {
     required this.size,
     this.rotation = 0,
     this.selected = false,
+    this.name = '',
   });
 }
 
@@ -51,6 +74,7 @@ class LayoutHomePage extends StatefulWidget {
 class _LayoutHomePageState extends State<LayoutHomePage> {
   // 画布逻辑大小（世界坐标）
   final Size worldSize = const Size(2000, 1200);
+  double worldExtent = 8000; // 8k x 8k，看起来就像无限
 
   // 网格设置
   static const double grid = 40; // 网格间距（世界单位）
@@ -67,16 +91,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   @override
   void initState() {
     super.initState();
-    _seedDemo();
-  }
-
-  void _seedDemo() {
-    shapes.addAll([
-      ShapeModel(id: 't1', type: ShapeType.tableRound, position: const Offset(400, 300), size: const Size(140, 140)),
-      ShapeModel(id: 't2', type: ShapeType.tableRect, position: const Offset(700, 280), size: const Size(220, 120)),
-      ShapeModel(id: 'c1', type: ShapeType.chair, position: const Offset(360, 240), size: const Size(50, 50)),
-      ShapeModel(id: 'c2', type: ShapeType.chair, position: const Offset(540, 360), size: const Size(50, 50)),
-    ]);
   }
 
   // 将屏幕像素位移转换为世界位移（考虑当前缩放）
@@ -87,10 +101,10 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
   // 吸附到网格
   Offset _snap(Offset p, ShapeType type) {
-    double step = 1;
-    if (type == ShapeType.chair) {
-      step = 0.5;
-    }
+    double step = 0.5;
+    // if (type == ShapeType.chair || type == ShapeType.cashier) {
+    //   step = 0.5;
+    // }
     double sx = (p.dx / grid / step).roundToDouble() * step * grid;
     double sy = (p.dy / grid / step).roundToDouble() * step * grid;
     return Offset(sx, sy);
@@ -108,18 +122,52 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         sz = const Size(grid * 2, grid * 2);
         break;
       case ShapeType.chair:
-        sz = Size(grid, grid);
-        break;
-      case ShapeType.cashier:
-        sz = Size(grid*2, grid);
-        break;
-      case ShapeType.wall:
-        sz = Size(grid, grid*5);
-        break;     default:
-        sz = const Size(grid * 2, grid * 2);
+        sz = Size(grid, grid / 2);
         break;
 
+      case ShapeType.booth:
+        sz = Size(grid * 1, grid * 4);
+        break;
+      case ShapeType.window:
+        sz = Size(grid * 3, grid / 2);
+        break;
+      case ShapeType.pillar:
+        sz = Size(grid, grid);
+        break;
+      // 结构类
+
+      case ShapeType.door:
+        sz = Size(grid, grid * 2);
+        break;
+      case ShapeType.wall:
+        sz = Size(grid / 2, grid * 5);
+        break;
+      case ShapeType.kitchen:
+        sz = Size(grid * 6, grid * 4);
+        break;
+      case ShapeType.restroom:
+        sz = Size(grid * 3, grid * 4);
+        break;
+
+      // 业务类
+      case ShapeType.cashier:
+        sz = Size(grid * 2, grid);
+        break;
+      case ShapeType.barCounter:
+        sz = Size(grid * 2, grid * 4);
+        break;
+      case ShapeType.queueArea:
+        sz = Size(grid * 4, grid * 4);
+        break;
+
+      // 辅助类
+      case ShapeType.label:
+      case ShapeType.arrow:
+      case ShapeType.decoration:
+        sz = Size(grid * 2, grid);
+        break;
     }
+
     setState(() {
       shapes.add(ShapeModel(id: id, type: type, position: _snap(base, type), size: sz));
       selectedId = id;
@@ -138,6 +186,63 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     setState(() {
       _tc.value = Matrix4.identity();
     });
+  }
+
+  void _editTableSizeDialog(ShapeModel shape) {
+    final widthCtrl = TextEditingController(text: (shape.size.width / grid).toStringAsFixed(0));
+    final heightCtrl = TextEditingController(text: (shape.size.height / grid).toStringAsFixed(0));
+    final nameCtrl = TextEditingController(text: shape.name);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('设置桌子尺寸（格）'),
+          content: Column(
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: '名称', hintText: '例如：c1、t05、包间1'),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: widthCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '宽'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: heightCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '长'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            TextButton(
+              onPressed: () {
+                final w = double.tryParse(widthCtrl.text) ?? 1;
+                final h = double.tryParse(heightCtrl.text) ?? 1;
+                setState(() {
+                  shape.size = Size(grid * w, grid * h);
+                  shape.name = nameCtrl.text.trim();
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -195,15 +300,23 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
             transformationController: _tc,
             minScale: 0.3,
             maxScale: 3.5,
-            boundaryMargin: const EdgeInsets.all(2000),
+            boundaryMargin: const EdgeInsets.all(10000),
             constrained: false,
-            child: Stack(
-              children: [
-                // 背景网格
-                CustomPaint(painter: GridPainter(grid: grid, worldSize: worldSize), size: worldSize),
-                // 物体层
-                ...shapes.map(_buildShapeWidget),
-              ],
+            child: SizedBox(
+              width: worldExtent,
+              height: worldExtent,
+              child: Stack(
+                children: [
+                  // 背景网格
+                  RepaintBoundary(
+                    child: CustomPaint(
+                      size: Size(worldExtent, worldExtent),
+                      painter: GridPainter(grid: grid, worldSize: Size(worldExtent, worldExtent)),
+                    ),
+                  ), // 物体层
+                  ...shapes.map(_buildShapeWidget),
+                ],
+              ),
             ),
           ),
         );
@@ -213,7 +326,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
   Widget _buildShapeWidget(ShapeModel s) {
     final isSelected = s.id == selectedId;
-
     final Widget shapeVisual;
     switch (s.type) {
       case ShapeType.tableRound:
@@ -230,8 +342,9 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         break;
       case ShapeType.wall:
         shapeVisual = _Wall(size: s.size, selected: isSelected);
-        break;  default:
-        shapeVisual = _Wall(size: s.size, selected: isSelected);
+        break;
+      default:
+        shapeVisual = _GenericBox(shape: s, selected: isSelected);
         break;
     }
 
@@ -248,6 +361,13 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
           onPanStart: (_) {
             setState(() => selectedId = s.id);
           },
+
+          onLongPress: () {
+            if (s.type == ShapeType.tableRect) {
+              _editTableSizeDialog(s);
+            }
+          },
+
           onPanUpdate: (details) {
             // 将屏幕像素增量变为世界增量（考虑缩放）
             final worldDelta = _deltaToWorld(details.delta);
@@ -262,9 +382,10 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
             });
           },
           onDoubleTap: () {
-            // 双击旋转 15° 作为示例
+            // 双击旋转 15° 作为示例math.pi / 12;
+            //45° 的弧度 = π / 4
             setState(() {
-              s.rotation += math.pi / 12;
+              s.rotation += math.pi / 4;
             });
           },
           child: Transform.rotate(angle: s.rotation, child: shapeVisual),
@@ -414,10 +535,13 @@ class _Chair extends StatelessWidget {
     );
   }
 }
+
 class _Wall extends StatelessWidget {
   final Size size;
   final bool selected;
+
   const _Wall({required this.size, required this.selected});
+
   @override
   Widget build(BuildContext context) {
     final color = selected ? Colors.indigo : Colors.indigo.shade400;
@@ -426,16 +550,19 @@ class _Wall extends StatelessWidget {
       height: size.height,
       decoration: BoxDecoration(
         color: color.withOpacity(0.18),
-        border: Border.all(color:color, width: 2),
+        border: Border.all(color: color, width: 2),
         borderRadius: BorderRadius.circular(2),
       ),
     );
   }
 }
+
 class _Cashier extends StatelessWidget {
   final Size size;
   final bool selected;
+
   const _Cashier({required this.size, required this.selected});
+
   @override
   Widget build(BuildContext context) {
     final color = selected ? Colors.indigo : Colors.indigo.shade400;
@@ -443,8 +570,8 @@ class _Cashier extends StatelessWidget {
       width: size.width,
       height: size.height,
       decoration: BoxDecoration(
-        color:color.withOpacity(0.18),
-        border: Border.all(color:color, width: 2),
+        color: color.withOpacity(0.18),
+        border: Border.all(color: color, width: 2),
         borderRadius: BorderRadius.circular(8),
       ),
       alignment: Alignment.center,
@@ -453,3 +580,61 @@ class _Cashier extends StatelessWidget {
   }
 }
 
+class _GenericBox extends StatelessWidget {
+  final ShapeModel shape;
+  final bool selected;
+
+  const _GenericBox({required this.shape, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: shape.size.width,
+      height: shape.size.height,
+      decoration: BoxDecoration(
+        color: selected ? Colors.grey.withOpacity(0.2) : Colors.white,
+        border: Border.all(color: selected ? Colors.blue : Colors.grey.shade400, width: selected ? 2 : 1),
+      ),
+      alignment: Alignment.center,
+      child: Text(shape.type.name, style: const TextStyle(fontSize: 10)),
+    );
+  }
+}
+
+class InfiniteGridPainter extends CustomPainter {
+  final double grid;
+
+  InfiniteGridPainter({required this.grid});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint line =
+        Paint()
+          ..color = const Color(0xFFE2E8F0)
+          ..strokeWidth = 1;
+
+    final Paint bold =
+        Paint()
+          ..color = const Color(0xFFD0D7E2)
+          ..strokeWidth = 1.5;
+
+    // 获取当前画布的视图变换矩阵
+    final transform = canvas.getSaveCount();
+    // 理论上可以结合 TransformationController 来获取偏移量
+    // 不过更常见的是直接绘制一大片，然后靠 InteractiveViewer 平移/缩放
+
+    // 绘制一个大区域（比如 -5000~5000）即可近似无限
+    const double extent = 5000;
+    for (double x = -extent; x <= extent; x += grid) {
+      final isBold = (x / grid) % 5 == 0;
+      canvas.drawLine(Offset(x, -extent), Offset(x, extent), isBold ? bold : line);
+    }
+    for (double y = -extent; y <= extent; y += grid) {
+      final isBold = (y / grid) % 5 == 0;
+      canvas.drawLine(Offset(-extent, y), Offset(extent, y), isBold ? bold : line);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
