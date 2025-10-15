@@ -603,8 +603,8 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
     Alignment alignment;
     // left should has gap to the right and top should has gap to the bottom
     BorderRadiusGeometry? borderRadius;
-    double width = 30;
-    double height = 20;
+    double width = grid * 0.75;
+    double height = grid * 0.5;
     const double gapFromTable = 5; // distance away from table
     const double betweenChairs = 5; // distance between chairs on same side
     Offset translateOffset;
@@ -625,8 +625,8 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
         break;
       case Side.right:
         alignment = Alignment(1, -1 + (index + 1) * 2 * spacing);
-        width = 20;
-        height = 30;
+        width =  grid * 0.5;
+        height =  grid * 0.75;
         translateOffset = Offset(gapFromTable, positionOffset);
         print("right alignment $alignment $translateOffset");
         borderRadius = BorderRadius.only(
@@ -649,8 +649,8 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
         break;
       case Side.left:
         alignment = Alignment(-1, -1 + (index + 1) * 2 * spacing);
-        width = 20;
-        height = 30;
+        width =  grid * 0.5;
+        height =  grid * 0.75;
         translateOffset = Offset(-gapFromTable, positionOffset);
         borderRadius = BorderRadius.only(
           topLeft: Radius.circular(20),
@@ -722,7 +722,7 @@ class _RectTable extends StatelessWidget {
               children: [
                 Text(
                   (shapeModel.table?.name ?? "").isNotEmpty ? (shapeModel.table?.name ?? "") : shapeModel.type.name,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: Colors.black87),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black87),
                 ),
                 SizedBox(height: 10),
 
