@@ -43,6 +43,24 @@ enum ShapeType {
   decoration,
 }
 
+enum TableStatus { free, reserved, occupied, disabled }
+
+class Table {
+  final String id;
+  String name;
+  TableStatus status;
+  int capacity;
+  List<int> distribution;
+
+  Table({
+    required this.id,
+    required this.name,
+    this.status = TableStatus.free,
+    this.capacity = 0,
+    this.distribution = const [0, 0, 0, 0],
+  });
+}
+
 /// 画布上一个物体
 class ShapeModel {
   final String id;
@@ -51,7 +69,7 @@ class ShapeModel {
   Size size; // 世界尺寸
   double rotation; // 弧度
   bool selected;
-  String name;
+  Table? table;
 
   ShapeModel({
     required this.id,
@@ -60,7 +78,7 @@ class ShapeModel {
     required this.size,
     this.rotation = 0,
     this.selected = false,
-    this.name = '',
+    this.table,
   });
 }
 
@@ -70,6 +88,7 @@ class LayoutHomePage extends StatefulWidget {
   @override
   State<LayoutHomePage> createState() => _LayoutHomePageState();
 }
+ const double grid = 40; // 网格间距（世界单位）
 
 class _LayoutHomePageState extends State<LayoutHomePage> {
   // 画布逻辑大小（世界坐标）
@@ -77,7 +96,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   double worldExtent = 8000; // 8k x 8k，看起来就像无限
 
   // 网格设置
-  static const double grid = 40; // 网格间距（世界单位）
 
   // 变换控制器（用于缩放/平移）
   final TransformationController _tc = TransformationController();
@@ -102,9 +120,9 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   // 吸附到网格
   Offset _snap(Offset p, ShapeType type) {
     double step = 0.5;
-    // if (type == ShapeType.chair || type == ShapeType.cashier) {
-    //   step = 0.5;
-    // }
+    if (type == ShapeType.chair) {
+      step = 0.1;
+    }
     double sx = (p.dx / grid / step).roundToDouble() * step * grid;
     double sy = (p.dy / grid / step).roundToDouble() * step * grid;
     return Offset(sx, sy);
@@ -114,15 +132,28 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     final id = 's${DateTime.now().microsecondsSinceEpoch}';
     final base = const Offset(200, 200);
     final Size sz;
+    Table? table;
     switch (type) {
       case ShapeType.tableRound:
         sz = const Size(grid * 2, grid * 2);
         break;
       case ShapeType.tableRect:
         sz = const Size(grid * 2, grid * 2);
+        // loop status , choose random
+        final status = TableStatus.values[math.Random().nextInt(TableStatus.values.length)];
+        final capacity = 4;
+        final distribution = [1, 1, 1, 1];
+
+        table = Table(
+          id: id,
+          name: "A${math.Random().nextInt(100)}",
+          status: status,
+          capacity: capacity,
+          distribution: distribution,
+        );
         break;
       case ShapeType.chair:
-        sz = Size(grid, grid / 2);
+        sz = Size(grid * 0.8, grid / 3);
         break;
 
       case ShapeType.booth:
@@ -140,7 +171,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         sz = Size(grid, grid * 2);
         break;
       case ShapeType.wall:
-        sz = Size(grid / 2, grid * 5);
+        sz = Size(grid / 4, grid * 5);
         break;
       case ShapeType.kitchen:
         sz = Size(grid * 6, grid * 4);
@@ -169,7 +200,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     }
 
     setState(() {
-      shapes.add(ShapeModel(id: id, type: type, position: _snap(base, type), size: sz));
+      shapes.add(ShapeModel(id: id, type: type, position: _snap(base, type), size: sz, table: table));
       selectedId = id;
     });
   }
@@ -191,14 +222,26 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   void _editTableSizeDialog(ShapeModel shape) {
     final widthCtrl = TextEditingController(text: (shape.size.width / grid).toStringAsFixed(0));
     final heightCtrl = TextEditingController(text: (shape.size.height / grid).toStringAsFixed(0));
-    final nameCtrl = TextEditingController(text: shape.name);
+    final nameCtrl = TextEditingController(text: shape.table?.name);
+    final capacityCtrl = TextEditingController(text: shape.table?.capacity.toString());
+
+    // set sets left/top/right/bottom distribution
+
+    final leftCtrl = TextEditingController(text: shape.table?.distribution[0].toString());
+    final topCtrl = TextEditingController(text: shape.table?.distribution[1].toString());
+    final rightCtrl = TextEditingController(text: shape.table?.distribution[2].toString());
+    final bottomCtrl = TextEditingController(text: shape.table?.distribution[3].toString());
+
+    // TODO: max is the max of left/top/right/bottom
+    final max = shape.table?.capacity ?? 0;
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('设置桌子尺寸（格）'),
-          content: Column(
+          content:SingleChildScrollView(child:  Column(
+
             children: [
               TextField(
                 controller: nameCtrl,
@@ -223,17 +266,65 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
                   ),
                 ],
               ),
+              TextField(
+                controller: capacityCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '容量'),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: leftCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '左'),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: topCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '上'),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: rightCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '右'),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: bottomCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '下'),
+                    ),
+                  ),
+                ],
+              ),
             ],
-          ),
+          ),),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final w = double.tryParse(widthCtrl.text) ?? 1;
                 final h = double.tryParse(heightCtrl.text) ?? 1;
+                final left = int.tryParse(leftCtrl.text) ?? 0;
+                final top = int.tryParse(topCtrl.text) ?? 0;
+                final right = int.tryParse(rightCtrl.text) ?? 0;
+                final bottom = int.tryParse(bottomCtrl.text) ?? 0;
+                final capacity = int.tryParse(capacityCtrl.text) ?? 0;
+                if (left + top + right + bottom > max) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('左上右下之和不能大于容量')));
+                  return;
+                }
                 setState(() {
                   shape.size = Size(grid * w, grid * h);
-                  shape.name = nameCtrl.text.trim();
+                  shape.table?.name = nameCtrl.text.trim();
+                  shape.table?.distribution = [left, top, right, bottom];
+                  shape.table?.capacity = capacity;
                 });
                 Navigator.pop(context);
               },
@@ -278,7 +369,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
           const SizedBox(height: 8),
           _ToolButton(label: '圆桌', icon: Icons.circle_outlined, onTap: () => _addShape(ShapeType.tableRound)),
           _ToolButton(label: '方桌', icon: Icons.rectangle_outlined, onTap: () => _addShape(ShapeType.tableRect)),
-          _ToolButton(label: '椅子', icon: Icons.chair_outlined, onTap: () => _addShape(ShapeType.chair)),
+          // _ToolButton(label: '椅子', icon: Icons.chair_outlined, onTap: () => _addShape(ShapeType.chair)),
           _ToolButton(label: 'cashier', icon: Icons.countertops, onTap: () => _addShape(ShapeType.cashier)),
           _ToolButton(label: 'Wall', icon: Icons.rectangle_outlined, onTap: () => _addShape(ShapeType.wall)),
           const Spacer(),
@@ -332,7 +423,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         shapeVisual = _RoundTable(size: s.size, selected: isSelected);
         break;
       case ShapeType.tableRect:
-        shapeVisual = _RectTable(size: s.size, selected: isSelected);
+        shapeVisual = _RectTable(shapeModel: s, selected: isSelected);
         break;
       case ShapeType.chair:
         shapeVisual = _Chair(size: s.size, selected: isSelected);
@@ -490,25 +581,157 @@ class _RoundTable extends StatelessWidget {
   }
 }
 
+Color getColor(TableStatus status) {
+  return switch (status) {
+    TableStatus.free => Colors.green,
+    TableStatus.reserved => Colors.orange,
+    TableStatus.occupied => Colors.red,
+    TableStatus.disabled => Colors.grey,
+  };
+}
+
+
+enum Side { top, right, bottom, left }
+
+/// Build chairs for a given side
+List<Widget> buildSideChairs(int count, Side side, Color color) {
+  if (count == 0) return [];
+
+  return List.generate(count, (index) {
+    double spacing = 1 / (count + 1);
+
+    Alignment alignment;
+    // left should has gap to the right and top should has gap to the bottom
+    BorderRadiusGeometry? borderRadius;
+    double width = 30;
+    double height = 20;
+    const double gapFromTable = 5; // distance away from table
+    const double betweenChairs = 5; // distance between chairs on same side
+    Offset translateOffset;
+    double positionOffset = (index - (count - 1) / 2) * betweenChairs;
+
+    // l t r b
+    switch (side) {
+      case Side.top:
+        alignment = Alignment(-1 + (index + 1) * 2 * spacing, -1);
+        translateOffset = Offset(positionOffset, -gapFromTable);
+        print("top alignment $alignment $translateOffset");
+        borderRadius = BorderRadius.only(
+          topLeft: Radius.circular(25),
+          topRight: Radius.circular(25),
+          bottomLeft: Radius.circular(5),
+          bottomRight: Radius.circular(5),
+        );
+        break;
+      case Side.right:
+        alignment = Alignment(1, -1 + (index + 1) * 2 * spacing);
+        width = 20;
+        height = 30;
+        translateOffset = Offset(gapFromTable, positionOffset);
+        print("right alignment $alignment $translateOffset");
+        borderRadius = BorderRadius.only(
+          topLeft: Radius.circular(5),
+          topRight: Radius.circular(25),
+          bottomLeft: Radius.circular(5),
+          bottomRight: Radius.circular(25),
+        );
+        break;
+      case Side.bottom:
+        alignment = Alignment(-1 + (index + 1) * 2 * spacing, 1);
+        print("bottom alignment $alignment $spacing");
+        translateOffset = Offset(positionOffset, gapFromTable);
+        borderRadius = BorderRadius.only(
+          topLeft: Radius.circular(5),
+          topRight: Radius.circular(5),
+          bottomLeft: Radius.circular(25),
+          bottomRight: Radius.circular(25),
+        );
+        break;
+      case Side.left:
+        alignment = Alignment(-1, -1 + (index + 1) * 2 * spacing);
+        width = 20;
+        height = 30;
+        translateOffset = Offset(-gapFromTable, positionOffset);
+        borderRadius = BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(5),
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(5),
+        );
+        break;
+    }
+
+    return Align(
+      alignment: alignment,
+      child: Transform.translate(
+        offset: translateOffset,
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(color: color, borderRadius: borderRadius),
+        ),
+      ),
+    );
+  });
+}
+
 class _RectTable extends StatelessWidget {
-  final Size size;
+  final ShapeModel shapeModel;
   final bool selected;
 
-  const _RectTable({required this.size, required this.selected});
+  const _RectTable({required this.shapeModel, required this.selected});
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Colors.orange : Colors.orange.shade400;
+    final statusColor = getColor(shapeModel.table?.status ?? TableStatus.free);
+    final color = selected ? statusColor : statusColor.withOpacity(0.8);
+    final distribution = shapeModel.table?.distribution ?? [0, 0, 0, 0];
+
+    final double tableW = shapeModel.size.width;
+    final double tableH = shapeModel.size.height;
+    final double scale = 1.5;
+    final double shortSide = tableW < tableH ? tableW : tableH;
+    double factor = shortSide * scale - shortSide;
+    print("tableW. $tableW =$tableH $factor");
+    if((tableW == grid && tableH == grid *2)  || (tableW == grid *2 && tableH == grid ) ){
+      factor += 20;
+    }
+
     return Container(
-      width: size.width,
-      height: size.height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: color.withOpacity(0.18),
-        border: Border.all(color: color, width: 2),
+      width: tableW + factor,
+      height: tableH + factor,
+      // color: Colors.red,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ...buildSideChairs(distribution[0], Side.left, statusColor),
+          ...buildSideChairs(distribution[1], Side.top, statusColor),
+          ...buildSideChairs(distribution[2], Side.right, statusColor),
+          ...buildSideChairs(distribution[3], Side.bottom, statusColor),
+          Container(
+            width: shapeModel.size.width,
+            height: shapeModel.size.height,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: color.withOpacity(0.18),
+              boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2))],
+              border: Border(left: BorderSide(color: color, width: 4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  (shapeModel.table?.name ?? "").isNotEmpty ? (shapeModel.table?.name ?? "") : shapeModel.type.name,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: Colors.black87),
+                ),
+                SizedBox(height: 10),
+
+                Text("${shapeModel.table?.status.name}".toString()),
+              ],
+            ),
+          ),
+        ],
       ),
-      alignment: Alignment.center,
-      child: const Text('方桌'),
     );
   }
 }
@@ -521,17 +744,22 @@ class _Chair extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Colors.indigo : Colors.indigo.shade400;
+    final color = selected ? Colors.grey : Colors.grey.shade400;
     return Container(
       width: size.width,
       height: size.height,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        color: color.withOpacity(0.18),
-        border: Border.all(color: color, width: 2),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(50),
+          topRight: Radius.circular(50),
+          bottomLeft: Radius.circular(5),
+          bottomRight: Radius.circular(5),
+        ),
+        color: color.withOpacity(0.9),
+        // border: Border.all(color: color, width: 2),
       ),
       alignment: Alignment.center,
-      child: const Text('椅'),
+      child: Text(""),
     );
   }
 }
