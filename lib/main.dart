@@ -88,7 +88,8 @@ class LayoutHomePage extends StatefulWidget {
   @override
   State<LayoutHomePage> createState() => _LayoutHomePageState();
 }
- const double grid = 40; // 网格间距（世界单位）
+
+const double grid = 40; // 网格间距（世界单位）
 
 class _LayoutHomePageState extends State<LayoutHomePage> {
   // 画布逻辑大小（世界坐标）
@@ -105,16 +106,13 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
   // 选中 ID
   String? selectedId;
+  bool isMultiSelectMode = false;
+  final Set<String> selectedIds = {};
+  final Map<String, Offset> _initialPositions = {};
 
   @override
   void initState() {
     super.initState();
-  }
-
-  // 将屏幕像素位移转换为世界位移（考虑当前缩放）
-  Offset _deltaToWorld(Offset screenDelta) {
-    final scale = _tc.value.getMaxScaleOnAxis();
-    return screenDelta / scale;
   }
 
   // 吸附到网格
@@ -201,7 +199,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
     setState(() {
       shapes.add(ShapeModel(id: id, type: type, position: _snap(base, type), size: sz, table: table));
-      selectedId = id;
     });
   }
 
@@ -240,71 +237,72 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
       builder: (context) {
         return AlertDialog(
           title: const Text('设置桌子尺寸（格）'),
-          content:SingleChildScrollView(child:  Column(
-
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: '名称', hintText: '例如：c1、t05、包间1'),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: widthCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '宽'),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: '名称', hintText: '例如：c1、t05、包间1'),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: widthCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '宽'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: heightCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '长'),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: heightCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '长'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              TextField(
-                controller: capacityCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '容量'),
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: leftCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '左'),
+                  ],
+                ),
+                TextField(
+                  controller: capacityCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '容量'),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: leftCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '左'),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: topCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '上'),
+                    Expanded(
+                      child: TextField(
+                        controller: topCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '上'),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: rightCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '右'),
+                    Expanded(
+                      child: TextField(
+                        controller: rightCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '右'),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: bottomCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '下'),
+                    Expanded(
+                      child: TextField(
+                        controller: bottomCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '下'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
-          ),),
+                  ],
+                ),
+              ],
+            ),
+          ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             TextButton(
@@ -461,9 +459,11 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
           onPanUpdate: (details) {
             // 将屏幕像素增量变为世界增量（考虑缩放）
-            final worldDelta = _deltaToWorld(details.delta);
+            final scale = _tc.value.getMaxScaleOnAxis();
+            final newPos = s.position + details.delta / scale;
+
             setState(() {
-              s.position += worldDelta;
+              s.position = _clampToBounds(newPos, s.size);
             });
           },
           onPanEnd: (_) {
@@ -483,6 +483,18 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         ),
       ),
     );
+  }
+
+  Offset _clampToBounds(Offset pos, Size size) {
+    const double minX = 0;
+    const double minY = 0;
+    final double maxX = worldExtent - size.width / 2;
+    final double maxY = worldExtent - size.height / 2;
+
+    double clampedX = pos.dx.clamp(size.width / 2 + minX, maxX);
+    double clampedY = pos.dy.clamp(size.height / 2 + minY, maxY);
+
+    return Offset(clampedX, clampedY);
   }
 }
 
@@ -590,7 +602,6 @@ Color getColor(TableStatus status) {
   };
 }
 
-
 enum Side { top, right, bottom, left }
 
 /// Build chairs for a given side
@@ -625,8 +636,8 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
         break;
       case Side.right:
         alignment = Alignment(1, -1 + (index + 1) * 2 * spacing);
-        width =  grid * 0.5;
-        height =  grid * 0.75;
+        width = grid * 0.5;
+        height = grid * 0.75;
         translateOffset = Offset(gapFromTable, positionOffset);
         print("right alignment $alignment $translateOffset");
         borderRadius = BorderRadius.only(
@@ -649,8 +660,8 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
         break;
       case Side.left:
         alignment = Alignment(-1, -1 + (index + 1) * 2 * spacing);
-        width =  grid * 0.5;
-        height =  grid * 0.75;
+        width = grid * 0.5;
+        height = grid * 0.75;
         translateOffset = Offset(-gapFromTable, positionOffset);
         borderRadius = BorderRadius.only(
           topLeft: Radius.circular(20),
@@ -684,7 +695,7 @@ class _RectTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = getColor(shapeModel.table?.status ?? TableStatus.free);
-    final color = selected ? statusColor : statusColor.withOpacity(0.8);
+    final color = selected ? statusColor : statusColor.withOpacity(0.4);
     final distribution = shapeModel.table?.distribution ?? [0, 0, 0, 0];
 
     final double tableW = shapeModel.size.width;
@@ -693,7 +704,7 @@ class _RectTable extends StatelessWidget {
     final double shortSide = tableW < tableH ? tableW : tableH;
     double factor = shortSide * scale - shortSide;
     print("tableW. $tableW =$tableH $factor");
-    if((tableW == grid && tableH == grid *2)  || (tableW == grid *2 && tableH == grid ) ){
+    if ((tableW == grid && tableH == grid * 2) || (tableW == grid * 2 && tableH == grid)) {
       factor += 20;
     }
 
