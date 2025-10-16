@@ -105,10 +105,11 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   final List<ShapeModel> shapes = [];
 
   // 选中 ID
-  String? selectedId;
+  // String? selectedId;
   bool isMultiSelectMode = false;
   final Set<String> selectedIds = {};
   final Map<String, Offset> _initialPositions = {};
+  Offset _cumulativeDelta = Offset.zero;
 
   @override
   void initState() {
@@ -203,11 +204,16 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   }
 
   void _deleteSelected() {
-    if (selectedId == null) return;
+    if (selectedIds.isEmpty) return;
     setState(() {
-      shapes.removeWhere((s) => s.id == selectedId);
-      selectedId = null;
+      shapes.removeWhere((s) => selectedIds.contains(s.id));
+      selectedIds.clear();
+      _initialPositions.clear();
     });
+    // setState(() {
+    //   shapes.removeWhere((s) => s.id == selectedId);
+    //   selectedId = null;
+    // });
   }
 
   void _resetView() {
@@ -338,7 +344,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('餐厅布局（缩放/网格/拖拽）'),
+        title: Text('餐厅布局 $selectedIds'),
         actions: [
           IconButton(tooltip: '重置视图', onPressed: _resetView, icon: const Icon(Icons.center_focus_strong)),
           IconButton(tooltip: '删除选中', onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline)),
@@ -385,26 +391,35 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return ClipRect(
-          child: InteractiveViewer(
-            transformationController: _tc,
-            minScale: 0.3,
-            maxScale: 3.5,
-            boundaryMargin: const EdgeInsets.all(10000),
-            constrained: false,
-            child: SizedBox(
-              width: worldExtent,
-              height: worldExtent,
-              child: Stack(
-                children: [
-                  // 背景网格
-                  RepaintBoundary(
-                    child: CustomPaint(
-                      size: Size(worldExtent, worldExtent),
-                      painter: GridPainter(grid: grid, worldSize: Size(worldExtent, worldExtent)),
-                    ),
-                  ), // 物体层
-                  ...shapes.map(_buildShapeWidget),
-                ],
+          child: GestureDetector(
+            // Click on empty space to clear all selections
+            onTapDown: (details) {
+              setState(() {
+                selectedIds.clear();
+                _initialPositions.clear();
+              });
+            },
+            child: InteractiveViewer(
+              transformationController: _tc,
+              minScale: 0.3,
+              maxScale: 3.5,
+              boundaryMargin: const EdgeInsets.all(10000),
+              constrained: false,
+              child: SizedBox(
+                width: worldExtent,
+                height: worldExtent,
+                child: Stack(
+                  children: [
+                    // 背景网格
+                    RepaintBoundary(
+                      child: CustomPaint(
+                        size: Size(worldExtent, worldExtent),
+                        painter: GridPainter(grid: grid, worldSize: Size(worldExtent, worldExtent)),
+                      ),
+                    ), // 物体层
+                    ...shapes.map(_buildShapeWidget),
+                  ],
+                ),
               ),
             ),
           ),
@@ -414,7 +429,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   }
 
   Widget _buildShapeWidget(ShapeModel s) {
-    final isSelected = s.id == selectedId;
+    final isSelected = selectedIds.contains(s.id);
     final Widget shapeVisual;
     switch (s.type) {
       case ShapeType.tableRound:
@@ -440,47 +455,83 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     return Positioned(
       left: s.position.dx,
       top: s.position.dy,
-      child: Listener(
-        onPointerDown: (_) {
+      child: GestureDetector(
+        // Prevent tap from propagating to canvas background
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          // Toggle selection on tap
+          if (selectedIds.contains(s.id)) {
+            selectedIds.remove(s.id);
+            _initialPositions.remove(s.id);
+          } else {
+            selectedIds.add(s.id);
+            _initialPositions[s.id] = s.position;
+          }
+          setState(() {});
+        },
+        onPanStart: (_) {
+          // Only allow drag if widget is already selected
+          if (!selectedIds.contains(s.id)) {
+            return;
+          }
+
+          _cumulativeDelta = Offset.zero;
+          for (final shape in shapes) {
+            if (selectedIds.contains(shape.id)) {
+              _initialPositions[shape.id] = shape.position;
+              debugPrint('onPanStart ${shape.position}');
+            }
+          }
+        },
+        onLongPress: () {
+          if (s.type == ShapeType.tableRect) {
+            _editTableSizeDialog(s);
+          }
+        },
+        onPanUpdate: (details) {
+          // Only allow drag if widget is selected
+          if (!selectedIds.contains(s.id)) {
+            return;
+          }
+
+          // Convert screen pixel delta to world delta (considering scale)
+          final scale = _tc.value.getMaxScaleOnAxis();
+          _cumulativeDelta += details.delta / scale;
+
           setState(() {
-            selectedId = s.id;
+            // Move all selected shapes together
+            for (final shape in shapes) {
+              if (selectedIds.contains(shape.id)) {
+                final start = _initialPositions[shape.id]!;
+                final newPos = start + _cumulativeDelta;
+                shape.position = _clampToBounds(newPos, shape.size);
+              }
+            }
           });
         },
-        child: GestureDetector(
-          onPanStart: (_) {
-            setState(() => selectedId = s.id);
-          },
+        onPanEnd: (_) {
+          // Only snap if widget is selected
+          if (!selectedIds.contains(s.id)) {
+            return;
+          }
 
-          onLongPress: () {
-            if (s.type == ShapeType.tableRect) {
-              _editTableSizeDialog(s);
+          // Snap all selected shapes to grid when released
+          setState(() {
+            for (final shape in shapes) {
+              if (selectedIds.contains(shape.id)) {
+                shape.position = _snap(shape.position, shape.type);
+              }
             }
-          },
-
-          onPanUpdate: (details) {
-            // 将屏幕像素增量变为世界增量（考虑缩放）
-            final scale = _tc.value.getMaxScaleOnAxis();
-            final newPos = s.position + details.delta / scale;
-
-            setState(() {
-              s.position = _clampToBounds(newPos, s.size);
-            });
-          },
-          onPanEnd: (_) {
-            // 放手时吸附网格
-            setState(() {
-              s.position = _snap(s.position, s.type);
-            });
-          },
-          onDoubleTap: () {
-            // 双击旋转 15° 作为示例math.pi / 12;
-            //45° 的弧度 = π / 4
-            setState(() {
-              s.rotation += math.pi / 4;
-            });
-          },
-          child: Transform.rotate(angle: s.rotation, child: shapeVisual),
-        ),
+          });
+        },
+        onDoubleTap: () {
+          // 双击旋转 15° 作为示例math.pi / 12;
+          //45° 的弧度 = π / 4
+          // setState(() {
+          //   s.rotation += math.pi / 4;
+          // });
+        },
+        child: Transform.rotate(angle: s.rotation, child: shapeVisual),
       ),
     );
   }
@@ -626,7 +677,7 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
       case Side.top:
         alignment = Alignment(-1 + (index + 1) * 2 * spacing, -1);
         translateOffset = Offset(positionOffset, -gapFromTable);
-        print("top alignment $alignment $translateOffset");
+        // print("top alignment $alignment $translateOffset");
         borderRadius = BorderRadius.only(
           topLeft: Radius.circular(25),
           topRight: Radius.circular(25),
@@ -639,7 +690,7 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
         width = grid * 0.5;
         height = grid * 0.75;
         translateOffset = Offset(gapFromTable, positionOffset);
-        print("right alignment $alignment $translateOffset");
+        // print("right alignment $alignment $translateOffset");
         borderRadius = BorderRadius.only(
           topLeft: Radius.circular(5),
           topRight: Radius.circular(25),
@@ -649,7 +700,7 @@ List<Widget> buildSideChairs(int count, Side side, Color color) {
         break;
       case Side.bottom:
         alignment = Alignment(-1 + (index + 1) * 2 * spacing, 1);
-        print("bottom alignment $alignment $spacing");
+        // print("bottom alignment $alignment $spacing");
         translateOffset = Offset(positionOffset, gapFromTable);
         borderRadius = BorderRadius.only(
           topLeft: Radius.circular(5),
@@ -695,7 +746,7 @@ class _RectTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = getColor(shapeModel.table?.status ?? TableStatus.free);
-    final color = selected ? statusColor : statusColor.withOpacity(0.4);
+    final color = selected ? statusColor : statusColor.withOpacity(0.8);
     final distribution = shapeModel.table?.distribution ?? [0, 0, 0, 0];
 
     final double tableW = shapeModel.size.width;
@@ -703,7 +754,7 @@ class _RectTable extends StatelessWidget {
     final double scale = 1.5;
     final double shortSide = tableW < tableH ? tableW : tableH;
     double factor = shortSide * scale - shortSide;
-    print("tableW. $tableW =$tableH $factor");
+    // print("tableW. $tableW =$tableH $factor");
     if ((tableW == grid && tableH == grid * 2) || (tableW == grid * 2 && tableH == grid)) {
       factor += 20;
     }
@@ -715,10 +766,10 @@ class _RectTable extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          ...buildSideChairs(distribution[0], Side.left, statusColor),
-          ...buildSideChairs(distribution[1], Side.top, statusColor),
-          ...buildSideChairs(distribution[2], Side.right, statusColor),
-          ...buildSideChairs(distribution[3], Side.bottom, statusColor),
+          ...buildSideChairs(distribution[0], Side.left, color),
+          ...buildSideChairs(distribution[1], Side.top, color),
+          ...buildSideChairs(distribution[2], Side.right, color),
+          ...buildSideChairs(distribution[3], Side.bottom, color),
           Container(
             width: shapeModel.size.width,
             height: shapeModel.size.height,
