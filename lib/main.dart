@@ -216,6 +216,41 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     // });
   }
 
+  void _deleteShape(String id) {
+    setState(() {
+      shapes.removeWhere((s) => s.id == id);
+      selectedIds.remove(id);
+      _initialPositions.remove(id);
+    });
+  }
+
+  void _duplicateShape(ShapeModel original) {
+    final id = 's${DateTime.now().microsecondsSinceEpoch}';
+    Table? newTable;
+    if (original.table != null) {
+      newTable = Table(
+        id: id,
+        name: original.table!.name,
+        status: original.table!.status,
+        capacity: original.table!.capacity,
+        distribution: List.from(original.table!.distribution),
+      );
+    }
+    setState(() {
+      shapes.add(
+        ShapeModel(
+          id: id,
+          type: original.type,
+          position: original.position + const Offset(20, 20),
+          // Offset the duplicate
+          size: original.size,
+          rotation: original.rotation,
+          table: newTable,
+        ),
+      );
+    });
+  }
+
   void _resetView() {
     setState(() {
       _tc.value = Matrix4.identity();
@@ -236,7 +271,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     final bottomCtrl = TextEditingController(text: shape.table?.distribution[3].toString());
 
     // TODO: max is the max of left/top/right/bottom
-    final max = shape.table?.capacity ?? 0;
 
     showDialog(
       context: context,
@@ -320,7 +354,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
                 final right = int.tryParse(rightCtrl.text) ?? 0;
                 final bottom = int.tryParse(bottomCtrl.text) ?? 0;
                 final capacity = int.tryParse(capacityCtrl.text) ?? 0;
-                if (left + top + right + bottom > max) {
+                if (left + top + right + bottom > capacity) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('左上右下之和不能大于容量')));
                   return;
                 }
@@ -447,7 +481,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   }
 
   Widget _buildShapeWidget(ShapeModel s) {
-    bool isSelected =  true;
+    bool isSelected = true;
     if (isMultiSelectMode) {
       isSelected = selectedIds.contains(s.id);
     }
@@ -516,9 +550,37 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
             }
           }
         },
-        onLongPress: () {
+        onLongPressStart: (details) async {
           if (s.type == ShapeType.tableRect) {
-            _editTableSizeDialog(s);
+            // Show popup menu at the tap location
+            final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+            final result = await showMenu<String>(
+              context: context,
+              position: RelativeRect.fromRect(details.globalPosition & const Size(40, 40), Offset.zero & overlay.size),
+              items: [
+                PopupMenuItem<String>(
+                  value: 'edit',
+                  child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('编辑桌子')]),
+                ),
+                PopupMenuItem<String>(
+                  value: 'duplicate',
+                  child: Row(children: [Icon(Icons.copy, size: 18), SizedBox(width: 8), Text('复制')]),
+                ),
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Row(children: [Icon(Icons.delete, size: 18), SizedBox(width: 8), Text('删除')]),
+                ),
+              ],
+            );
+
+            // Handle menu selection
+            if (result == 'edit') {
+              _editTableSizeDialog(s);
+            } else if (result == 'duplicate') {
+              _duplicateShape(s);
+            } else if (result == 'delete') {
+              _deleteShape(s.id);
+            }
           }
         },
         onPanUpdate: (details) {
@@ -566,9 +628,9 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         onDoubleTap: () {
           // 双击旋转 15° 作为示例math.pi / 12;
           //45° 的弧度 = π / 4
-          // setState(() {
-          //   s.rotation += math.pi / 4;
-          // });
+          setState(() {
+            s.rotation += math.pi / 4;
+          });
         },
         child: Transform.rotate(angle: s.rotation, child: shapeVisual),
       ),
@@ -794,9 +856,14 @@ class _RectTable extends StatelessWidget {
     final double shortSide = tableW < tableH ? tableW : tableH;
     double factor = shortSide * scale - shortSide;
     // print("tableW. $tableW =$tableH $factor");
-    if ((tableW == grid && tableH == grid * 2) || (tableW == grid * 2 && tableH == grid)) {
-      factor += 20;
-    }
+    // if ((tableW == grid && tableH == grid * 2) || (tableW == grid * 2 && tableH == grid)) {
+    //   factor += 20;
+    // }
+    //
+    // if (tableW == tableH) {
+    //   factor = grid;
+    // }
+    factor = grid;
 
     return Container(
       width: tableW + factor,
@@ -947,8 +1014,6 @@ class InfiniteGridPainter extends CustomPainter {
           ..color = const Color(0xFFD0D7E2)
           ..strokeWidth = 1.5;
 
-    // 获取当前画布的视图变换矩阵
-    final transform = canvas.getSaveCount();
     // 理论上可以结合 TransformationController 来获取偏移量
     // 不过更常见的是直接绘制一大片，然后靠 InteractiveViewer 平移/缩放
 
