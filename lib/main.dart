@@ -344,8 +344,24 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('餐厅布局 $selectedIds'),
+        title: Text('餐厅布局 ${isMultiSelectMode ? selectedIds : ""}'),
         actions: [
+          // Multi-select toggle button
+          IconButton(
+            tooltip: isMultiSelectMode ? '关闭多选模式' : '开启多选模式',
+            onPressed: () {
+              setState(() {
+                isMultiSelectMode = !isMultiSelectMode;
+                // Clear selections when switching modes
+                selectedIds.clear();
+                _initialPositions.clear();
+              });
+            },
+            icon: Icon(
+              isMultiSelectMode ? Icons.check_box : Icons.check_box_outline_blank,
+              color: isMultiSelectMode ? Colors.teal : null,
+            ),
+          ),
           IconButton(tooltip: '重置视图', onPressed: _resetView, icon: const Icon(Icons.center_focus_strong)),
           IconButton(tooltip: '删除选中', onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline)),
         ],
@@ -392,12 +408,14 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
       builder: (context, constraints) {
         return ClipRect(
           child: GestureDetector(
-            // Click on empty space to clear all selections
+            // Click on empty space to clear all selections (only in multi-select mode)
             onTapDown: (details) {
-              setState(() {
-                selectedIds.clear();
-                _initialPositions.clear();
-              });
+              if (isMultiSelectMode) {
+                setState(() {
+                  selectedIds.clear();
+                  _initialPositions.clear();
+                });
+              }
             },
             child: InteractiveViewer(
               transformationController: _tc,
@@ -429,7 +447,11 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   }
 
   Widget _buildShapeWidget(ShapeModel s) {
-    final isSelected = selectedIds.contains(s.id);
+    bool isSelected =  true;
+    if (isMultiSelectMode) {
+      isSelected = selectedIds.contains(s.id);
+    }
+
     final Widget shapeVisual;
     switch (s.type) {
       case ShapeType.tableRound:
@@ -459,6 +481,9 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         // Prevent tap from propagating to canvas background
         behavior: HitTestBehavior.opaque,
         onTap: () {
+          // Only handle tap in multi-select mode
+          if (!isMultiSelectMode) return;
+
           // Toggle selection on tap
           if (selectedIds.contains(s.id)) {
             selectedIds.remove(s.id);
@@ -470,9 +495,17 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
           setState(() {});
         },
         onPanStart: (_) {
-          // Only allow drag if widget is already selected
-          if (!selectedIds.contains(s.id)) {
-            return;
+          if (isMultiSelectMode) {
+            // Multi-select mode: Only allow drag if widget is already selected
+            if (!selectedIds.contains(s.id)) {
+              return;
+            }
+          } else {
+            // Single mode: Auto-select this widget only
+            selectedIds.clear();
+            selectedIds.add(s.id);
+            _initialPositions.clear();
+            _initialPositions[s.id] = s.position;
           }
 
           _cumulativeDelta = Offset.zero;
@@ -489,7 +522,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
           }
         },
         onPanUpdate: (details) {
-          // Only allow drag if widget is selected
+          // Only allow drag if widget is in selection
           if (!selectedIds.contains(s.id)) {
             return;
           }
@@ -521,6 +554,12 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
               if (selectedIds.contains(shape.id)) {
                 shape.position = _snap(shape.position, shape.type);
               }
+            }
+
+            // In single-select mode, clear selection after move
+            if (!isMultiSelectMode) {
+              selectedIds.clear();
+              _initialPositions.clear();
             }
           });
         },
