@@ -127,7 +127,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
     return Offset(sx, sy);
   }
 
-  void _addShape(ShapeType type) {
+  void _addShape(ShapeType type, {int? capacity, Size? customSize, List<int>? distribution}) {
     final id = 's${DateTime.now().microsecondsSinceEpoch}';
     final base = const Offset(200, 200);
     final Size sz;
@@ -137,18 +137,18 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         sz = const Size(grid * 2, grid * 2);
         break;
       case ShapeType.tableRect:
-        sz = const Size(grid * 2, grid * 2);
+        sz = customSize ?? const Size(grid * 2, grid * 2);
         // loop status , choose random
         final status = TableStatus.values[math.Random().nextInt(TableStatus.values.length)];
-        final capacity = 4;
-        final distribution = [1, 1, 1, 1];
+        final tableCapacity = capacity ?? 2;
+        final tableDistribution = distribution ?? [0, 1, 0, 1];
 
         table = Table(
           id: id,
           name: "A${math.Random().nextInt(100)}",
           status: status,
-          capacity: capacity,
-          distribution: distribution,
+          capacity: tableCapacity,
+          distribution: tableDistribution,
         );
         break;
       case ShapeType.chair:
@@ -249,6 +249,73 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         ),
       );
     });
+  }
+
+  void _showTableSizeMenu(BuildContext context, Offset globalPosition) async {
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final result = await showMenu<Map<String, dynamic>>(
+      context: context,
+      position: RelativeRect.fromRect(globalPosition & const Size(40, 40), Offset.zero & overlay.size),
+      items: [
+        PopupMenuItem<Map<String, dynamic>>(
+          value: {
+            'capacity': 2,
+            'size': Size(grid * 2, grid * 2),
+            'distribution': [0, 1, 0, 1],
+          },
+          child: Text('2人桌 (2×2)'),
+        ),
+        PopupMenuItem<Map<String, dynamic>>(
+          value: {
+            'capacity': 4,
+            'size': Size(grid * 3, grid * 2),
+            'distribution': [0, 2, 0, 2],
+          },
+          child: Text('4人桌 (3×2)'),
+        ),
+        PopupMenuItem<Map<String, dynamic>>(
+          value: {
+            'capacity': 4,
+            'size': Size(grid * 2, grid * 3),
+            'distribution': [2, 0, 2, 0],
+          },
+          child: Text('4人桌 (2×3)'),
+        ),
+        PopupMenuItem<Map<String, dynamic>>(
+          value: {
+            'capacity': 6,
+            'size': Size(grid * 2, grid * 4),
+            'distribution': [2, 1, 2, 1],
+          },
+          child: Text('6人桌 (3×4)'),
+        ),
+        PopupMenuItem<Map<String, dynamic>>(
+          value: {
+            'capacity': 8,
+            'size': Size(grid * 4, grid * 2),
+            'distribution': [1, 3, 1, 3],
+          },
+          child: Text('8人桌 (3×3)'),
+        ),
+        PopupMenuItem<Map<String, dynamic>>(
+          value: {
+            'capacity': 12,
+            'size': Size(grid * 3, grid * 6),
+            'distribution': [4, 2, 4, 2],
+          },
+          child: Text('12人桌 (4×6)'),
+        ),
+      ],
+    );
+
+    if (result != null) {
+      _addShape(
+        ShapeType.tableRect,
+        capacity: result['capacity'] as int,
+        customSize: result['size'] as Size,
+        distribution: result['distribution'] as List<int>,
+      );
+    }
   }
 
   void _resetView() {
@@ -422,7 +489,18 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
           const Text('组件', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           _ToolButton(label: '圆桌', icon: Icons.circle_outlined, onTap: () => _addShape(ShapeType.tableRound)),
-          _ToolButton(label: '方桌', icon: Icons.rectangle_outlined, onTap: () => _addShape(ShapeType.tableRect)),
+          Builder(
+            builder:
+                (ctx) => _ToolButton(
+                  label: '方桌',
+                  icon: Icons.rectangle_outlined,
+                  onTap: () {
+                    final RenderBox box = ctx.findRenderObject() as RenderBox;
+                    final position = box.localToGlobal(Offset.zero);
+                    _showTableSizeMenu(context, position + Offset(box.size.width, 0));
+                  },
+                ),
+          ),
           // _ToolButton(label: '椅子', icon: Icons.chair_outlined, onTap: () => _addShape(ShapeType.chair)),
           _ToolButton(label: 'cashier', icon: Icons.countertops, onTap: () => _addShape(ShapeType.cashier)),
           _ToolButton(label: 'Wall', icon: Icons.rectangle_outlined, onTap: () => _addShape(ShapeType.wall)),
