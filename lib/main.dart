@@ -1,5 +1,8 @@
 import 'dart:math' as math;
+import 'package:demo_dinning_table/table_model.dart';
+import 'package:demo_dinning_table/utils.dart';
 import 'package:flutter/material.dart';
+import 'package:vector_math/vector_math_64.dart' as vm;
 
 void main() {
   runApp(const MyApp());
@@ -19,68 +22,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// 支持的组件类型
-enum ShapeType {
-  // 结构类
-  wall,
-  door,
-  window,
-  pillar,
-  kitchen,
-  restroom,
-  // 桌椅类
-  tableRect,
-  tableRound,
-  chair,
-  booth,
-  // 业务类
-  cashier,
-  barCounter,
-  queueArea,
-  // 辅助类
-  label,
-  arrow,
-  decoration,
-}
 
-enum TableStatus { free, reserved, occupied, disabled }
-
-class Table {
-  final String id;
-  String name;
-  TableStatus status;
-  int capacity;
-  List<int> distribution;
-
-  Table({
-    required this.id,
-    required this.name,
-    this.status = TableStatus.free,
-    this.capacity = 0,
-    this.distribution = const [0, 0, 0, 0],
-  });
-}
-
-/// 画布上一个物体
-class ShapeModel {
-  final String id;
-  final ShapeType type;
-  Offset position; // 世界坐标（未缩放）
-  Size size; // 世界尺寸
-  double rotation; // 弧度
-  bool selected;
-  Table? table;
-
-  ShapeModel({
-    required this.id,
-    required this.type,
-    required this.position,
-    required this.size,
-    this.rotation = 0,
-    this.selected = false,
-    this.table,
-  });
-}
 
 class LayoutHomePage extends StatefulWidget {
   const LayoutHomePage({super.key});
@@ -95,8 +37,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
   // 画布逻辑大小（世界坐标）
   final Size worldSize = const Size(2000, 1200);
   double worldExtent = 8000; // 8k x 8k，看起来就像无限
-
-  // 网格设置
 
   // 变换控制器（用于缩放/平移）
   final TransformationController _tc = TransformationController();
@@ -129,9 +69,25 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
   void _addShape(ShapeType type, {int? capacity, Size? customSize, List<int>? distribution}) {
     final id = 's${DateTime.now().microsecondsSinceEpoch}';
-    final base = const Offset(200, 200);
+    // final base = const Offset(200, 200);
+    // 1️⃣ 获取当前视口尺寸
+    final RenderBox box = context.findRenderObject() as RenderBox;
+    final Size viewportSize = box.size;
+
+    // 2️⃣ 计算屏幕中心点（逻辑坐标）
+    final Offset viewportCenter = Offset(
+      viewportSize.width / 2,
+      viewportSize.height / 2,
+    );
+
+    final vm.Vector3 worldVec = vm.Matrix4.inverted(_tc.value).transform3(
+      vm.Vector3(viewportCenter.dx, viewportCenter.dy, 0),
+    );
+
+    final Offset base = Offset(worldVec.x, worldVec.y);
+
     final Size sz;
-    Table? table;
+    TableModel? table;
     switch (type) {
       case ShapeType.tableRound:
         sz = const Size(grid * 2, grid * 2);
@@ -143,7 +99,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         final tableCapacity = capacity ?? 2;
         final tableDistribution = distribution ?? [0, 1, 0, 1];
 
-        table = Table(
+        table = TableModel(
           id: id,
           name: "A${math.Random().nextInt(100)}",
           status: status,
@@ -226,9 +182,9 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
 
   void _duplicateShape(ShapeModel original) {
     final id = 's${DateTime.now().microsecondsSinceEpoch}';
-    Table? newTable;
+    TableModel? newTable;
     if (original.table != null) {
-      newTable = Table(
+      newTable = TableModel(
         id: id,
         name: original.table!.name,
         status: original.table!.status,
@@ -447,6 +403,25 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
       appBar: AppBar(
         title: Text('餐厅布局 ${isMultiSelectMode ? selectedIds : ""}'),
         actions: [
+
+          IconButton(
+            tooltip: '保存布局',
+            icon: const Icon(Icons.save),
+            onPressed: () => saveLayout(shapes,context),
+          ),
+          IconButton(
+            tooltip: '加载布局',
+            icon: const Icon(Icons.folder_open),
+            onPressed: () async {
+              final loaded = await loadLayout(context);
+              setState(() {
+                shapes
+                  ..clear()
+                  ..addAll(loaded);
+              });
+            },
+          ),
+
           // Multi-select toggle button
           IconButton(
             tooltip: isMultiSelectMode ? '关闭多选模式' : '开启多选模式',
