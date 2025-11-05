@@ -94,7 +94,7 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
         break;
       case ShapeType.tableRect:
         sz = customSize ?? const Size(grid * 2, grid * 2);
-        // loop status , choose random
+        // ========= 随机生成桌面状态 可用，预定，占用，不可食用 =========
         final status = TableStatus.values[math.Random().nextInt(TableStatus.values.length)];
         final tableCapacity = capacity ?? 2;
         final tableDistribution = distribution ?? [0, 1, 0, 1];
@@ -476,7 +476,6 @@ class _LayoutHomePageState extends State<LayoutHomePage> {
                   },
                 ),
           ),
-          // _ToolButton(label: '椅子', icon: Icons.chair_outlined, onTap: () => _addShape(ShapeType.chair)),
           _ToolButton(label: 'cashier', icon: Icons.countertops, onTap: () => _addShape(ShapeType.cashier)),
           _ToolButton(label: 'Wall', icon: Icons.rectangle_outlined, onTap: () => _addShape(ShapeType.wall)),
           const Spacer(),
